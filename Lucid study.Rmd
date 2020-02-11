@@ -1,0 +1,131 @@
+---
+title: "Case Comp"
+author: "Cole Herndon"
+date: "October 2, 2019"
+output: html_document
+---
+
+
+```{r}
+library(readxl)
+library(tidyverse)
+library(lubridate)
+
+BYU_Accounts <- read_excel("BYU_Accounts.xlsx")
+BYU_Payments <- read_excel("BYU_Payments.xlsx")
+BYU_Users <- read_excel("BYU_Users.xlsx")
+
+Account_w_pay <- merge(BYU_Accounts, BYU_Payments, by.x = c("RANDOM_ACCOUNT_ID", "CHART_LEVEL"), by.y = c("RANDOM_ACCOUNT_ID", "LEVEL"))
+account_pay_user <- merge(Account_w_pay, BYU_Users, by.x = c("RANDOM_ACCOUNT_ID"), by.y = c("RANDOM_ACCOUNT_ID"))
+```
+
+```{r}
+overall_sum <- account_pay_user %>%
+  group_by(CHART_PERSONA) %>%
+  summarise(sum = sum(AMOUNT_USD)) %>%
+ arrange(desc(sum))
+overall_sum
+
+mean_sum <- account_pay_user %>%
+  group_by(CHART_PERSONA) %>%
+  summarise(avg = mean(AMOUNT_USD)) %>%
+  arrange(desc(avg))
+mean_sum
+
+overall_sum_sub_per <- account_pay_user %>%
+  group_by(CHART_SUBPERSONA) %>%
+  summarise(sum = sum(AMOUNT_USD)) %>%
+ arrange(desc(sum))
+overall_sum_sub_per
+
+mean_sum_sub_per <- account_pay_user %>%
+  group_by(CHART_SUBPERSONA) %>%
+  summarise(avg = mean(AMOUNT_USD)) %>%
+  arrange(desc(avg))
+mean_sum_sub_per
+```
+
+```{r}
+my_df <- account_pay_user
+my_df$Year <- isoyear(my_df$CREATED)
+
+eng_join_date <- my_df %>%
+  select(CHART_PERSONA) %>%
+  group_by(CHART_PERSONA) %>%
+  count(CHART_PERSONA) %>% 
+  arrange(desc(n))
+
+
+
+year_totals <- my_df %>% 
+  select(CHART_PERSONA, Year) %>%
+  #count(Year)
+  group_by(CHART_PERSONA, Year) %>%
+  count(CHART_PERSONA)
+
+eng <- data.frame(eng = subset(year_totals, year_totals$CHART_PERSONA == "engineering"))
+eng <- mutate(eng, Percent_growth = eng$eng.n / cumsum(eng$eng.n))
+
+ops <- data.frame(ops = subset(year_totals, year_totals$CHART_PERSONA == "operations"))
+ops <- mutate(ops, Percent_growth = ops$ops.n / cumsum(ops$ops.n))
+
+t.test(ops[2:8, 3], eng[3:10, 3])
+
+
+percent_growth <- ggplot(ops, mapping = aes(x = ops$ops.Year, y = ops$Percent_growth)) +
+  geom_line() +
+  geom_line(data = eng, aes(x = eng$eng.Year, y = eng$Percent_growth), col = "red") +
+  xlim(c(2012, 2019))
+
+percent_growth
+
+blah_tbl <- my_df %>%
+  group_by(CHART_PERSONA) %>% 
+  mutate(Total = n()) %>% 
+  select(CHART_PERSONA, Year, Total)
+
+Percent_increase_CHART_PER <- subset(blah_tbl, (blah_tbl$Year == 2010) & (blah_tbl$CHART_PERSONA == "engineering"))
+  
+```
+
+
+```{r}
+bb <- my_df %>% 
+  select(AMOUNT_USD, USERS_ON_ACCOUNT, Year, CHART_PERSONA)
+
+bb <- mutate(bb, Revenue_per_user = AMOUNT_USD / USERS_ON_ACCOUNT )
+
+bb$Revenue_per_user <- round(bb$Revenue_per_user)
+
+sum(!is.infinite(bb$Revenue_per_user))
+
+sums_b <- bb %>%  
+  group_by(CHART_PERSONA) %>% 
+  filter(AMOUNT_USD > 0  & CHART_PERSONA == "engineering") 
+  
+
+
+
+
+  summarise(Total_Avg = mean(Revenue_per_user))
+
+
+```
+
+```{r}
+Engineering_prop_level <- my_df %>% 
+  select(CHART_LEVEL, CHART_PERSONA) %>% 
+  filter(CHART_PERSONA == "engineering") %>% 
+  count(CHART_LEVEL)
+Engineering_prop_level <- mutate(cc, Percent = (n / sum(n)) * 100)
+  
+
+Operations_prop_level <- my_df %>% 
+  select(CHART_LEVEL, CHART_PERSONA) %>% 
+  filter(CHART_PERSONA == "operations") %>% 
+  count(CHART_LEVEL)
+Operations_prop_level <- mutate(opp, Percent = (n / sum(n)) * 100) 
+
+sum(my_df$CHART_LICENSED_USERS)
+```
+
