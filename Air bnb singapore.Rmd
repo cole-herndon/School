@@ -1,0 +1,188 @@
+---
+title: "Stat 330 Final"
+author: "Cole Herndon"
+date: "November 19, 2019"
+output:
+  word_document: default
+  html_document: default
+---
+
+link to our data set https://www.kaggle.com/jojoker/singapore-airbnb
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(car)
+library(ggfortify)
+
+sing_abb_all <- read.csv("C:\\Users\\coleh\\OneDrive\\Documents\\BYU Fall 2019\\Stat 330\\Final\\singapore-airbnb\\listings.csv")
+```
+
+```{r}
+#subsetting our data with the variables that we used
+sing <- sing_abb_all %>% 
+  select(id, neighbourhood_group, room_type, price, number_of_reviews, reviews_per_month)
+sing <- sing[-c(3169),]
+```
+
+```{r}
+#frequencey plot of price and number of reviews
+price_reviews_plot <- ggplot(data = sing, mapping = aes(y = price, x = number_of_reviews)) + geom_point() 
+price_reviews_plot
+
+#frequencey plot of price and reviews per month
+price_reviews_per_month_plot <- ggplot(data = sing, mapping = aes(y = price, x = reviews_per_month)) + geom_point() 
+price_reviews_per_month_plot
+
+#box plot of room type with price
+price_room_type_box <- ggplot(data = sing, mapping = aes(y = price, x = room_type)) + geom_boxplot()
+price_room_type_box
+
+#log transformation on price
+sing$log_price <- log(sing$price)
+
+#new boxplots with log transformation
+price_room_type_box <- ggplot(data = sing, mapping = aes(y = log_price, x = room_type)) + geom_boxplot()
+price_room_type_box
+```
+
+```{r}
+
+set.seed(42)
+random_sample_sz <- 1000
+sing_no_na <- sing_abb_all
+
+#removing a missing value from our data and 0 values
+sing_no_na$reviews_per_month <- ifelse(is.na(sing_no_na$reviews_per_month) == TRUE, 0, sing_no_na$reviews_per_month )
+sing_no_na$price <- ifelse(is.na(sing_no_na$price) == TRUE, 0, sing_no_na$price)
+sing_no_na <- sing_no_na[-c(3169),]
+
+#pulling 1000 observations from our data set to run our linear model on
+sing_random <- sing_no_na[sample(nrow(sing_no_na), random_sample_sz),]
+
+bc <-boxCox(sing_random$price ~ sing_random$reviews_per_month)
+bc$x[which.max(bc$y)]
+
+random_sample_boxplot <- ggplot(data = sing_random, mapping = aes(y = log(price), x = room_type)) + geom_boxplot()
+random_sample_boxplot
+
+#color coded scatter plot
+r_s_plot_color <- ggplot(data = sing_random, mapping = aes(y = log(price), x = reviews_per_month, color = room_type)) + geom_point()
+r_s_plot_color
+
+```
+```{r}
+#frequency plot with log y transformation
+freq_distribution <- ggplot(data = sing_random, mapping = aes(x = log(sing_random$price))) + 
+  geom_histogram(mapping = aes(y = ..density..), binwidth = .1) +
+  stat_function(fun = dnorm, color = "red", size = 1,
+                args = list(mean = mean(log(sing_random$price)), 
+                            sd = sd(log(sing_random$price))))
+freq_distribution
+
+```
+
+
+```{r}
+#linear model with log transformation on our response variable
+sing_random_log_y.lm <- lm(data = sing_random, formula = log(price) ~ reviews_per_month + room_type + neighbourhood_group )
+summary(sing_random_log_y.lm)
+```
+
+```{r}
+#saving residuals
+sing_random$resi <- sing_random_log_y.lm$residuals
+sing_random$predicted <- predict(sing_random_log_y.lm)
+
+#check x vs y is linear
+#partial regression plots
+avPlots(sing_random_log_y.lm)
+
+#residuals vs predictor plots
+b_rpm <- ggplot(sing_random, aes(x = reviews_per_month, y = resi)) +
+  geom_point() +
+  geom_hline(yintercept = 0, color = 'blue') + 
+  theme(aspect.ratio = 1) +
+  geom_smooth(method = 'lm', color = 'red')
+
+b_rpm
+
+#residuals vs fit values plot
+autoplot(sing_random_log_y.lm, which = 1, ncol = 1, nrow = 1)
+```
+
+```{r}
+#The residuals are normally distributed and centered at zero
+
+# normal probability plot
+autoplot(sing_random_log_y.lm, which = 2, ncol = 1, nrow = 1)
+
+# shapiro wilk test
+#shapiro.test(sing_random_log_y.lm)
+
+#boxplot
+sing_log_y_boxplot <- ggplot(sing_random_log_y.lm, mapping = aes(y = sing_random$resi)) + geom_boxplot()
+sing_log_y_boxplot
+```
+
+```{r}
+#The residuals are homoscedastic
+
+#residuals vs fit values plot
+autoplot(sing_random_log_y.lm, which = 1, ncol = 1, nrow = 1)
+
+#brown-forsythe test
+grp <- as.factor(c(rep("lower", floor(dim(sing_random)[1] / 2)), 
+                   rep("upper", ceiling(dim(sing_random)[1] / 2))))
+leveneTest(sing_random$resi ~ grp, center = median)
+```
+
+```{r}
+#The model describes all observations - there are no influential points (use the DFBETAS, DFFITS, partial regression plots
+
+# DFFITS
+sing_random.dffits <- data.frame("dffits" = dffits(sing_random_log_y.lm))
+sing_random.dffits$obs <- 1:length(sing_random$price)
+
+ggplot(data = sing_random.dffits) +
+  geom_point(mapping = aes(x = obs, y = abs(dffits))) +
+  # geom_hline(mapping = aes(yintercept = 1),
+  #            color = "red", linetype = "dashed") +  # for n <= 30
+  geom_hline(mapping = aes(yintercept = 2 * sqrt(6 / length(obs))),
+             color = "red", linetype = "dashed") +  # for n > 30
+  theme_bw() +
+  theme(aspect.ratio = 1)
+
+sing_random.dffits[abs(sing_random.dffits$dffits) > 1, ]
+
+#DFFBETAS
+
+sing_random.dfbetas <- as.data.frame(dfbetas(sing_random_log_y.lm))
+sing_random.dfbetas$obs <- 1:length(sing_random$price)
+# age
+ggplot(data = sing_random.dfbetas) +
+ geom_point(mapping = aes(x = obs, y = abs(reviews_per_month))) +
+   geom_hline(mapping = aes(yintercept = 2 / sqrt(length(obs))),
+              color = "red", linetype = "dashed") +  # for n > 30
+   theme_bw() +
+   theme(aspect.ratio = 1)
+
+reviews.extreme.dfbetas <- sing_random.dfbetas[abs(sing_random.dfbetas$reviews_per_month) > .25, ]
+reviews.extreme.dfbetas[order(reviews.extreme.dfbetas$reviews_per_month), ]
+
+#partial pregression
+b_rpm
+```
+
+```{r}
+#no mulitcollinlearnity
+vif(sing_random_log_y.lm)
+```
+```{r}
+#confidence intervals of coefficients
+confint(sing_random_log_y.lm, level = .95)
+```
+```{r}
+#adjusted r squared
+summary(sing_random_log_y.lm)
+```
