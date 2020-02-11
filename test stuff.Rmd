@@ -1,0 +1,72 @@
+---
+title: "Baseball practice"
+author: "Cole Herndon"
+date: "January 31, 2020"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(ggfortify)
+library(varhandle)
+library(readxl)
+base <- read.csv("C:\\Users\\coleh\\OneDrive\\Desktop\\BYU\\Baseball\\20191025-BrighamYoung-1.csv")
+
+df <- read_excel("C:\\Users\\coleh\\OneDrive\\Desktop\\BYU\\Baseball\\20191025-BrighamYoung-1.xlsx")
+
+```
+```{r}
+class(base$Strikes)
+class(df$Strikes)
+```
+
+```{r}
+# pitcher_ <- base %>% 
+#   select(Pitcher, PitcherTeam, PitcherId, Inning, Balls, Strikes, TaggedPitchType, PitchCall, SpinRate)
+# head(pitcher_)
+# unfactor(pitcher_$Strikes)
+# class(pitcher_$Strikes)
+
+pitcher_id <- df %>% 
+   select(Pitcher, PitcherTeam, PitcherId, Inning, Balls, Strikes, TaggedPitchType, PitchCall, SpinRate, RelSpeed)
+head(pitcher_id)
+
+strike_sum <- pitcher_id %>% 
+  group_by(PitcherId) %>% 
+  summarise(strikeSum = sum(Strikes))
+
+strike_sum_name <- pitcher_id %>% 
+  group_by(Pitcher) %>% 
+  summarise(strikeSum = sum(Strikes))
+
+total_pitches <- pitcher_id %>% 
+  group_by(Pitcher) %>% 
+  count(PitcherId) %>% 
+  arrange(desc(n))
+head(total_pitches)
+  
+```
+
+```{r}
+name <- "Nielson, Cy"
+
+p_name <- pitcher_id %>% 
+  filter(Pitcher == name) %>% 
+  group_by(TaggedPitchType) %>% 
+  summarise_at(c("SpinRate", "RelSpeed"), mean, na.rm = TRUE) %>% 
+  mutate(Spin_speed_ratio = SpinRate/RelSpeed)
+  
+  
+```
+
+```{r}
+team <- "BYU_COU"
+
+team_pitchers <- pitcher_id %>% 
+  filter(PitcherTeam == team) %>% 
+  group_by(TaggedPitchType, Pitcher) %>% 
+  summarise_at(c("SpinRate", "RelSpeed"), mean, na.rm = TRUE) %>% 
+  mutate(Spin_speed_ratio = SpinRate/RelSpeed)
+
+```
+
