@@ -1,0 +1,166 @@
+---
+title: "Pitcher data"
+author: "Cole Herndon"
+date: "February 18, 2020"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(ggfortify)
+library(readxl)
+library(car)
+library(ggplot2)
+```
+
+```{r}
+mydf <- read_excel("C:\\Users\\coleh\\OneDrive\\Desktop\\BYU\\Baseball\\BYU Pitchers Data.xlsx")
+team <- "BYU_COU"
+```
+
+```{r}
+pitcher_df <- mydf %>% 
+   select(Pitcher, PitcherTeam, PitcherId, Inning, Balls, Strikes, TaggedPitchType, PitchCall, SpinRate, 
+          RelSpeed, VertBreak, InducedVertBreak, HorzBreak, RelHeight, Extension, SpinAxis) %>% 
+  mutate(TotalBreak = sqrt((VertBreak)^2 + (HorzBreak)^2)) %>% 
+  filter(PitcherTeam == team)
+head(pitcher_df)
+```
+```{r}
+ball_break <- pitcher_df %>% 
+  group_by(TaggedPitchType, Pitcher) %>% 
+  summarise_at(c("SpinRate", "RelSpeed", "VertBreak", "HorzBreak", "InducedVertBreak", "TotalBreak"), mean, na.rm = TRUE) %>% 
+  mutate(Spin_speed_ratio = SpinRate/RelSpeed)
+
+pitch_count <- pitcher_df %>% 
+  group_by(Pitcher) %>% 
+  count()
+```
+
+```{r}
+p_numeric <- pitcher_df %>% 
+  select(SpinRate, RelSpeed, InducedVertBreak, HorzBreak, SpinAxis, TotalBreak)
+```
+```{r}
+plot(p_numeric, cex=.2, lower.panel= NULL)
+cor(p_numeric)
+```
+
+
+
+```{r}
+#only 4 pitches of a cutter so I will remvoe it from my data set also remvoing undefined pitches
+Target <- c("ChangeUp", "Fastball", "Curveball", "Slider")
+p_data <- mydf %>% 
+  select(InducedVertBreak, HorzBreak, SpinRate, RelSpeed, TaggedPitchType) %>% 
+  filter(TaggedPitchType %in% Target) %>% 
+  drop_na()
+
+pitch_types_counts <- p_data %>% 
+  group_by(TaggedPitchType) %>% 
+  count()
+
+# p_data$InducedVertBreak <- (p_data$InducedVertBreak)^2
+
+#making dummy variables to control the order of my linear model
+p_data$p_changeup <- ifelse(p_data$TaggedPitchType == "ChangeUp", 1, 0)
+p_data$p_curve <- ifelse(p_data$TaggedPitchType == "Curveball", 1, 0)
+p_data$p_fast <- ifelse(p_data$TaggedPitchType == "Fastball", 1, 0)
+p_data$p_slider <- ifelse(p_data$TaggedPitchType == "Slider", 1, 0)
+# p_data$p_undefined <- ifelse(p_data$TaggedPitchType == "Undefined", 1, 0)
+
+```
+```{r}
+vert_speed_color_plot <- ggplot(data = p_data, mapping = aes(x = RelSpeed, y = InducedVertBreak, color = TaggedPitchType)) + geom_point()
+vert_speed_color_plot
+
+vert_spin_color_plot <- ggplot(data = p_data, mapping = aes(x = SpinRate, y = InducedVertBreak, color = TaggedPitchType)) + geom_point()
+vert_spin_color_plot
+```
+
+```{r}
+###Vertical Break Analysis
+vert_break.lm <- lm(InducedVertBreak ~ SpinRate + RelSpeed + p_curve + p_slider + p_changeup, data = p_data)
+summary(vert_break.lm)
+p_data$vert_resi <- vert_break.lm$residuals
+p_data$vert_fit <- vert_break.lm$fitted.values
+```
+
+```{r}
+#residuals vs fit values plot vertical break
+autoplot(vert_break.lm, which = 1, ncol = 1, nrow = 1)
+
+#box plot of pitch type with Vertical break
+pitch_type_vertBreak <- ggplot(data = p_data, mapping = aes(y = InducedVertBreak, x = TaggedPitchType)) + geom_boxplot()
+pitch_type_vertBreak
+
+#partial regression plots Vertical Break
+avPlots(vert_break.lm)
+
+#residuals vs predictor plots
+vert_speed_plot <- ggplot(p_data, aes(x = p_data$RelSpeed, y = p_data$vert_resi)) +
+  geom_point() +
+  labs(title = "Vertical break of ball vs Relative speed mph",
+    x = "Speed mph", y = "Vertical Break inches") +
+    geom_smooth(method = "lm", col = "red")
+vert_speed_plot
+
+vert_spin_plot <- ggplot(p_data, aes(x = p_data$SpinRate, y = p_data$vert_resi)) +
+  geom_point() +
+  labs(title = "Vertical break of ball vs Spin Rate",
+    x = "Spin rate", y = "Vertical Break inches") +
+    geom_smooth(method = "lm", col = "red")
+vert_spin_plot
+
+# normal probability plot
+autoplot(vert_break.lm, which = 2, ncol = 1, nrow = 1)
+
+#boxplot of residuals and Vertical BReak
+vert_resi_bxpt <- ggplot(p_data, mapping = aes(y = p_data$vert_resi)) + geom_boxplot()
+vert_resi_bxpt
+
+# variance inflation factors
+vif(vert_break.lm)
+mean(vif(vert_break.lm))
+```
+```{r}
+pred_pitch(92,2600,"ChangeUp")
+```
+
+```{r}
+pred_pitch <- function(speed = numeric(), spin = numeric(), pitch = string()) {
+  a <- 0; b <- 0; c <- 0;
+  if (!(pitch %in% c("Curveball", "ChangeUp", "Slider", "Fastball"))) 
+    {return("Please enter a valid pitch type: Curveball, Slider, Fastball, or Changeup")}
+  
+  if (pitch == "Slider") {a <- 0; b <- 0; c <- 1;}
+  else if (pitch == "Curveball") {a <- 1; b <- 0; c <- 0;}
+  else if (pitch == "ChangeUp") {a <- 0; b <- 1; c <- 0;}
+  return(predict(vert_break.lm, newdata = data.frame(RelSpeed = speed, SpinRate = spin, p_curve = a, p_changeup = b, p_slider = c), interval = "predict", level = .95))
+}
+```
+
+```{r}
+# my_boxcox <-boxCox(p_data$RelSpeed ~ p_data$VertBreak)
+# my_boxcox$x[which.max(my_boxcox$y)]
+# 
+# horz_boxcox <-boxCox(p_data$RelSpeed ~ p_data$HorzBreak)
+# horz_boxcox$x[which.max(horz_boxcox$y)]
+```
+
+```{r}
+###Horizontal Break Analysis
+
+horz_break.lm <- lm(data = p_data, formula = HorzBreak ~ SpinRate + RelSpeed + p_curve + p_slider + p_changeup)
+summary(horz_break.lm)
+p_data$horz_resi <- horz_break.lm$residuals
+p_data$horz_fit <- horz_break.lm$fitted.values
+
+#box plot of pitch type with Horizontal break
+pitch_type_HorzBreak <- ggplot(data = p_data, mapping = aes(y = HorzBreak, x = TaggedPitchType)) + geom_boxplot()
+pitch_type_HorzBreak
+
+#residuals vs fit values plot horizontal break
+autoplot(horz_break.lm, which = 1, ncol = 1, nrow = 1)
+```
+
